@@ -35,6 +35,15 @@ beforeAll(async () => {
       "utf8",
     ),
   );
+  await db.exec(
+    readFileSync(
+      new URL(
+        "../supabase/migrations/202610210001_account_transfers.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
   await asUser(alice);
   await db.exec("select initialize_user();select initialize_user();");
   const rows = await db.query<{ id: string }>(

@@ -1,7 +1,9 @@
 import { beforeEach, afterEach, it, expect, vi } from "vitest";
 const auth = vi.hoisted(() => ({
   getSession: vi.fn(),
-  signInAnonymously: vi.fn(),
+  signInWithOtp: vi.fn(),
+  updateUser: vi.fn(),
+  signOut: vi.fn(),
 }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ auth }) }));
 beforeEach(() => {
@@ -9,46 +11,93 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("VITE_SUPABASE_URL", "https://test.supabase.co");
   vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "public-test-key");
+  vi.stubGlobal("window", {
+    location: {
+      origin: "https://nutria.example",
+      pathname: "/",
+      search: "",
+      hash: "",
+    },
+    history: { replaceState: vi.fn() },
+  });
+  auth.getSession.mockResolvedValue({ data: { session: null }, error: null });
 });
-afterEach(() => vi.unstubAllEnvs());
-it("abre localmente sem exigir sessão quando não há Supabase", async () => {
-  vi.stubEnv("VITE_SUPABASE_URL", "");
-  const api = await import("../src/api");
-  expect(await api.ensurePersonalIdentity()).toBe(api.LOCAL_ID);
-  expect(auth.getSession).not.toHaveBeenCalled();
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
-it("reutiliza a identidade existente sem criar outro usuário", async () => {
+it("exige conta por e-mail em vez de criar identidade anônima", async () => {
+  const { getAccount } = await import("../src/auth");
+  expect(await getAccount()).toBeNull();
+});
+it("reutiliza a mesma conta em aparelhos diferentes", async () => {
   auth.getSession.mockResolvedValue({
-    data: { session: { user: { id: "existing" } } },
+    data: {
+      session: {
+        user: {
+          id: "same-user",
+          email: "person@example.com",
+          is_anonymous: false,
+        },
+      },
+    },
     error: null,
   });
-  const api = await import("../src/api");
-  expect(await api.ensurePersonalIdentity()).toBe("existing");
-  expect(auth.signInAnonymously).not.toHaveBeenCalled();
+  const { getAccount } = await import("../src/auth");
+  expect((await getAccount())?.id).toBe("same-user");
 });
-it("cria uma única sessão automática para chamadas concorrentes", async () => {
-  auth.getSession.mockResolvedValue({ data: { session: null }, error: null });
-  auth.signInAnonymously.mockResolvedValue({
-    data: { user: { id: "personal" } },
+it("não abre dados da antiga sessão anônima sem vincular e-mail", async () => {
+  auth.getSession.mockResolvedValue({
+    data: { session: { user: { id: "old", is_anonymous: true } } },
     error: null,
   });
-  const api = await import("../src/api");
-  expect(
-    await Promise.all([
-      api.ensurePersonalIdentity(),
-      api.ensurePersonalIdentity(),
-    ]),
-  ).toEqual(["personal", "personal"]);
-  expect(auth.signInAnonymously).toHaveBeenCalledTimes(1);
+  const { getAccount } = await import("../src/auth");
+  expect(await getAccount()).toBeNull();
 });
-it("informa falhas do Supabase em vez de trocar silenciosamente de dados", async () => {
-  auth.getSession.mockResolvedValue({ data: { session: null }, error: null });
-  auth.signInAnonymously.mockResolvedValue({
-    data: { user: null },
-    error: { message: "Anonymous sign-ins are disabled" },
+it("envia link sem senha permitindo novas contas e retorno ao app", async () => {
+  auth.signInWithOtp.mockResolvedValue({ error: null });
+  const { sendAccessLink } = await import("../src/auth");
+  await sendAccessLink(" PERSON@example.com ");
+  expect(auth.signInWithOtp).toHaveBeenCalledWith({
+    email: "person@example.com",
+    options: {
+      emailRedirectTo: "https://nutria.example/",
+      shouldCreateUser: true,
+    },
   });
-  const api = await import("../src/api");
-  await expect(api.ensurePersonalIdentity()).rejects.toThrow(
-    "Habilite Anonymous Sign-Ins",
+});
+it("vincula a sessão anônima anterior sem perder o id dos registros", async () => {
+  auth.getSession.mockResolvedValue({
+    data: { session: { user: { id: "old", is_anonymous: true } } },
+    error: null,
+  });
+  auth.updateUser.mockResolvedValue({ error: null });
+  const { sendAccessLink } = await import("../src/auth");
+  await sendAccessLink("person@example.com");
+  expect(auth.updateUser).toHaveBeenCalledWith(
+    { email: "person@example.com" },
+    { emailRedirectTo: "https://nutria.example/" },
   );
+  expect(auth.signInWithOtp).not.toHaveBeenCalled();
+});
+it("traduz limite de e-mail e permite tentar novamente", async () => {
+  auth.signInWithOtp.mockResolvedValue({
+    error: { code: "over_email_send_rate_limit" },
+  });
+  const { sendAccessLink } = await import("../src/auth");
+  await expect(sendAccessLink("p@example.com")).rejects.toThrow(
+    "Limite de envio",
+  );
+});
+it("sai apenas do aparelho atual", async () => {
+  auth.signOut.mockResolvedValue({ error: null });
+  const { signOutAccount } = await import("../src/auth");
+  await signOutAccount();
+  expect(auth.signOut).toHaveBeenCalledWith({ scope: "local" });
+});
+it("remove o erro de retorno da URL sem expor tokens", async () => {
+  window.location.hash = "#error=access_denied&error_code=otp_expired";
+  const { callbackError } = await import("../src/auth");
+  expect(callbackError()).toContain("expirou");
+  expect(window.history.replaceState).toHaveBeenCalledWith(null, "", "/");
 });

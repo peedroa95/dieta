@@ -13,7 +13,17 @@ const url = import.meta.env.VITE_SUPABASE_URL;
 const key =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   import.meta.env.VITE_SUPABASE_ANON_KEY;
-export const supabase = url && key ? createClient(url, key) : null;
+export const supabase =
+  url && key
+    ? createClient(url, key, {
+        auth: {
+          flowType: "implicit",
+          detectSessionInUrl: true,
+          persistSession: true,
+          autoRefreshToken: true,
+        },
+      })
+    : null;
 export const LOCAL_ID = "11111111-1111-4111-8111-111111111111";
 const LOCAL_KEY = "nutria-demo-v1";
 export function readLocal(): Data {
@@ -26,7 +36,10 @@ function writeLocal(data: Data) {
 function check(error: { message: string } | null) {
   if (error) throw new Error(errorMessage(error));
 }
-export async function load(local: boolean): Promise<Data> {
+export async function load(
+  local: boolean,
+  expectedUserId?: string,
+): Promise<Data> {
   if (local) return readLocal();
   if (!supabase) throw new Error("Configure o projeto Supabase.");
   const data = emptyData();
@@ -41,6 +54,13 @@ export async function load(local: boolean): Promise<Data> {
           .order("id")
           .range(from, from + 999);
         check(error);
+        if (
+          expectedUserId &&
+          page!.some((row) => row.user_id !== expectedUserId)
+        )
+          throw new Error(
+            "A conta mudou durante a leitura. Atualize a página.",
+          );
         rows.push(...page!);
         if (page!.length < 1000) break;
         from += 1000;
@@ -190,28 +210,4 @@ export async function saveRecipe(
 }
 export function clearLocal() {
   localStorage.removeItem(LOCAL_KEY);
-}
-
-// Reuse the browser identity; never expose all records to bypass a login screen.
-let identityRequest: Promise<string> | null = null;
-export function ensurePersonalIdentity(): Promise<string> {
-  if (!supabase) return Promise.resolve(LOCAL_ID);
-  if (identityRequest) return identityRequest;
-  identityRequest = (async () => {
-    const { data, error } = await supabase!.auth.getSession();
-    check(error);
-    if (data.session) return data.session.user.id;
-    const result = await supabase!.auth.signInAnonymously();
-    if (result.error)
-      throw new Error(
-        "Não foi possível abrir o armazenamento remoto. Habilite Anonymous Sign-Ins no Supabase e tente novamente. " +
-          errorMessage(result.error),
-      );
-    if (!result.data.user)
-      throw new Error("Não foi possível identificar o espaço pessoal.");
-    return result.data.user.id;
-  })().finally(() => {
-    identityRequest = null;
-  });
-  return identityRequest;
 }

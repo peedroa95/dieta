@@ -14,8 +14,19 @@ import {
   X,
   Menu,
   LoaderCircle,
+  LogOut,
+  Cloud,
 } from "lucide-react";
-import { supabase, ensurePersonalIdentity, initialize, load } from "./api";
+import { supabase, LOCAL_ID, initialize, load } from "./api";
+import {
+  getAccount,
+  isAccount,
+  signOutAccount,
+  callbackError,
+  initialAccessError,
+} from "./auth";
+import type { User as AccountUser } from "@supabase/supabase-js";
+import Auth from "./Auth";
 import { StoreProvider, useStore } from "./store";
 import { dateInZone, type Data } from "./domain";
 import Dashboard from "./Dashboard";
@@ -34,8 +45,23 @@ const nav = [
   { id: "profile", name: "Meu perfil", icon: User },
   { id: "settings", name: "Configurações", icon: SettingsIcon },
 ];
-function Shell() {
-  const { profile, local, today, notice, setNotice, busy } = useStore();
+function Shell({
+  account,
+  onExit,
+}: {
+  account: AccountUser | null;
+  onExit: () => Promise<void>;
+}) {
+  const {
+    profile,
+    local,
+    today,
+    notice,
+    setNotice,
+    busy,
+    refreshing,
+    syncError,
+  } = useStore();
   const [page, setPage] = useState("home");
   const [date, setDate] = useState(dateInZone(new Date(), profile.timezone));
   const [quick, setQuick] = useState(false);
@@ -98,7 +124,7 @@ function Shell() {
             </span>
             <span>
               <strong>{profile.name || "Minha jornada"}</strong>
-              <small>Meu espaço pessoal</small>
+              <small>{account?.email || "Meu espaço local"}</small>
             </span>
             <ChevronDown size={15} />
           </button>
@@ -127,6 +153,16 @@ function Shell() {
             </span>
           </div>
           <div className="topbar-right">
+            {!local && (
+              <span className="sync-status">
+                <Cloud size={14} />
+                {syncError
+                  ? "Sem conexão"
+                  : refreshing
+                    ? "Atualizando…"
+                    : "Na nuvem"}
+              </span>
+            )}
             <span className="today-label">
               {new Date(`${today}T12:00:00`).toLocaleDateString("pt-BR", {
                 day: "numeric",
@@ -142,13 +178,28 @@ function Shell() {
               <Plus size={16} />
               <span>Registrar alimento</span>
             </button>
+            {account && (
+              <button
+                className="icon-button"
+                aria-label="Sair da conta"
+                title="Sair da conta neste aparelho"
+                disabled={busy}
+                onClick={() =>
+                  void onExit().catch((e) =>
+                    setNotice("Não foi possível sair: " + e.message),
+                  )
+                }
+              >
+                <LogOut size={18} />
+              </button>
+            )}
           </div>
         </header>
         {local && (
           <div className="demo-banner">
             <span>
               <span className="status-dot" />
-              Uso pessoal • dados salvos neste navegador
+              Dados apenas neste navegador • sincronização ainda não configurada
             </span>
             <button onClick={() => navigate("settings")}>Meus dados</button>
           </div>
@@ -224,21 +275,58 @@ function Shell() {
 }
 export default function App() {
   const local = !supabase;
+  const [account, setAccount] = useState<AccountUser | null>(null);
+  const [authReady, setAuthReady] = useState(local);
+  const [authError, setAuthError] = useState(initialAccessError);
   const [ready, setReady] = useState<{ data: Data; userId: string } | null>(
     null,
   );
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   useEffect(() => {
+    if (!supabase) return;
     let cancelled = false;
-    setError("");
+    let eventVersion = 0;
+    if (authError) callbackError();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      eventVersion++;
+      if (!cancelled) {
+        setAccount(isAccount(session?.user) ? session!.user : null);
+        if (isAccount(session?.user)) setAuthError("");
+        setAuthReady(true);
+      }
+    });
+    void getAccount()
+      .then((user) => {
+        if (!cancelled && eventVersion === 0) {
+          setAccount(user);
+          setAuthReady(true);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled && eventVersion === 0) {
+          setAuthError(e.message);
+          setAuthReady(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
+  const activeId = local ? LOCAL_ID : account?.id;
+  useEffect(() => {
+    let cancelled = false;
     setReady(null);
+    setError("");
+    if (!activeId) return;
     void (async () => {
       try {
-        const userId = await ensurePersonalIdentity();
-        await initialize(local, userId);
-        const data = await load(local);
-        if (!cancelled) setReady({ data, userId });
+        await initialize(local, activeId);
+        const data = await load(local, activeId);
+        if (!cancelled) setReady({ data, userId: activeId });
       } catch (e) {
         if (!cancelled)
           setError(
@@ -251,8 +339,9 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [local, retry]);
-  if (error)
+  }, [local, activeId, retry]);
+  if (!local && authReady && !account) return <Auth error={authError} />;
+  if (error && activeId)
     return (
       <div className="loading-screen">
         <Leaf size={40} />
@@ -261,14 +350,24 @@ export default function App() {
         <p>
           {local
             ? "Seus dados locais foram preservados. Tente novamente."
-            : "Confira a configuração do Supabase e as migrações indicadas no README."}
+            : "Confira a conexão e as migrações do Supabase indicadas no README."}
         </p>
         <button className="button" onClick={() => setRetry((v) => v + 1)}>
           Tentar novamente
         </button>
+        {!local && (
+          <button
+            className="button secondary"
+            onClick={() =>
+              void signOutAccount().catch((e) => setError(e.message))
+            }
+          >
+            Sair da conta
+          </button>
+        )}
       </div>
     );
-  if (!ready)
+  if (!authReady || !ready || ready.userId !== activeId)
     return (
       <div className="loading-screen">
         <LoaderCircle className="spinner" size={32} />
@@ -281,8 +380,9 @@ export default function App() {
       local={local}
       userId={ready.userId}
       initial={ready.data}
+      email={account?.email || ""}
     >
-      <Shell />
+      <Shell account={account} onExit={signOutAccount} />
     </StoreProvider>
   );
 }

@@ -18,24 +18,59 @@ export default defineConfig({
     },
   },
   projects: [
-    { name: "desktop", use: { viewport: { width: 1440, height: 1000 } } },
+    {
+      name: "desktop",
+      testMatch: "app.spec.ts",
+      use: { viewport: { width: 1440, height: 1000 } },
+    },
     {
       name: "mobile",
+      testMatch: "app.spec.ts",
       use: {
         viewport: { width: 390, height: 844 },
         isMobile: true,
         hasTouch: true,
       },
     },
-  ],
-  webServer: {
-    command: "npm run dev -- --port 5175",
-    env: {
-      VITE_SUPABASE_URL: "",
-      VITE_SUPABASE_PUBLISHABLE_KEY: "",
-      VITE_SUPABASE_ANON_KEY: "",
+    {
+      name: "accounts-desktop",
+      testMatch: "accounts.spec.ts",
+      use: {
+        baseURL: "http://127.0.0.1:5176",
+        viewport: { width: 1440, height: 1000 },
+      },
     },
-    url: "http://127.0.0.1:5175",
-    reuseExistingServer: false,
-  },
+    {
+      name: "accounts-mobile",
+      testMatch: "accounts.spec.ts",
+      use: {
+        baseURL: "http://127.0.0.1:5176",
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+      },
+    },
+  ],
+  webServer: [
+    {
+      command: "npm run dev -- --port 5175",
+      env: {
+        VITE_SUPABASE_URL: "",
+        VITE_SUPABASE_PUBLISHABLE_KEY: "",
+        VITE_SUPABASE_ANON_KEY: "",
+      },
+      url: "http://127.0.0.1:5175",
+      reuseExistingServer: false,
+    },
+    {
+      command: "npm run dev -- --port 5176",
+      url: "http://127.0.0.1:5176",
+      reuseExistingServer: false,
+      env: {
+        VITE_SUPABASE_URL: "https://nutria-auth-test.supabase.co",
+        VITE_SUPABASE_PUBLISHABLE_KEY: "public-test-key",
+        VITE_SUPABASE_ANON_KEY: "",
+      },
+    },
+  ],
 });

@@ -1,6 +1,6 @@
 # Nutria
 
-Aplicativo pessoal de alimentação em português brasileiro, com React, TypeScript e Vite. **Abre diretamente no painel, sem cadastro, login ou senha.** Permite cadastrar alimentos manualmente ou pelo número EAN/código de barras, registrar refeições e acompanhar nutrientes, água, metas e peso.
+Aplicativo de alimentação em português brasileiro, com React, TypeScript, Vite e Supabase. **Contas separadas com acesso por link de e-mail, sem senha, e os mesmos registros no celular e no computador.** Permite cadastrar alimentos manualmente ou pelo número EAN/código de barras, registrar refeições e acompanhar nutrientes, água, metas e peso.
 
 ## Executar
 
@@ -14,36 +14,23 @@ npm run dev
 
 O servidor de desenvolvimento usa a porta 5173. `npm run build` gera `dist` para hospedagem estática com HTTPS; `npm run preview` serve a compilação para conferência local.
 
-## Armazenamento pessoal
+## Contas e sincronização
 
-Sem variáveis do Supabase, o aplicativo funciona imediatamente com armazenamento persistente no navegador. Os dados da versão anterior são preservados: a chave interna `nutria-demo-v1` foi mantida por compatibilidade, embora o aplicativo não exiba mais um modo de demonstração ou tela de login. Não são adicionados dados fictícios.
+Siga o passo a passo em [CONFIGURAR_SUPABASE.md](CONFIGURAR_SUPABASE.md) para criar o projeto, executar as três migrações, habilitar e-mail, configurar o envio SMTP e as URLs de retorno e definir as duas variáveis públicas na Vercel.
 
-Os dados locais ficam neste navegador e não são sincronizados entre dispositivos. Em **Configurações → Exportar meus registros**, você pode baixar uma cópia JSON. **Apagar dados locais** exige confirmação e remove esses registros. Limpar o armazenamento do navegador também remove os dados locais.
+Com o Supabase configurado, o app exibe o acesso por **link de e-mail**. Cada pessoa usa seu e-mail, e a mesma conta acessa os mesmos registros em diferentes aparelhos. A sessão persiste no SDK; sair encerra somente a sessão do aparelho atual. As tabelas mantêm RLS por usuário. Nenhuma credencial administrativa vai para o navegador.
 
-### Supabase opcional, sem tela de login
+Os dados são lidos na abertura, ao voltar para a janela e a cada 30 segundos enquanto o app estiver visível. Configurações também oferece **Atualizar dados**. Respostas antigas de atualização não substituem o resultado de uma gravação recente. Uma falha de leitura preserva a tela atual e permite tentar novamente.
 
-Se quiser armazenar os dados no PostgreSQL:
+### Preservar os dados que já estão no navegador
 
-1. Crie seu projeto Supabase.
-2. No SQL Editor, execute nesta ordem, uma única vez cada migração:
-   - `supabase/migrations/202610200001_initial.sql`
-   - `supabase/migrations/202610200002_food_barcodes.sql`
-3. Se já executou a primeira migração, aplique **somente a segunda**. Ela acrescenta código de barras, fonte e indicação de nutrientes opcionais não informados, preservando os registros existentes.
-4. Em **Authentication → Sign In / Providers**, habilite **Anonymous Sign-Ins**. A autenticação acontece automaticamente em segundo plano, sem formulário de login. Uma sessão existente é reutilizada para preservar o acesso aos dados já vinculados a ela. Se a criação da sessão falhar, o aplicativo informa o erro e permite tentar novamente; ele não troca silenciosamente para outro armazenamento.
-5. Copie `.env.example` para `.env.local` e preencha a URL e a chave **pública publishable/anon**:
+Em uma conta conectada, use **Configurações → Trazer meus registros → Transferir dados locais**, confira o e-mail e confirme. Outra opção é **Importar arquivo JSON**, para arquivos exportados pelo app em outro navegador/endereço.
 
-   ```dotenv
-   VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co
-   VITE_SUPABASE_PUBLISHABLE_KEY=SUA-CHAVE-PUBLICA
-   ```
+A transferência usa a migração `202610210001_account_transfers.sql`: é atômica e idempotente, remapeia identificadores para a conta conectada e preserva snapshots históricos. Dados já existentes de alimentos por EAN, metas/peso por data e perfil preenchido não são sobrescritos. A cópia local permanece intacta. O mesmo lote não pode ser transferido novamente para outra conta.
 
-6. Reinicie o servidor. Na hospedagem estática, configure essas variáveis durante a compilação e gere um novo `dist`.
+Sem as variáveis do Supabase, o modo local continua acessível com um aviso de que não há sincronização. A chave interna `nutria-demo-v1` foi preservada para compatibilidade. **Exportar meus registros** baixa uma cópia JSON; **Apagar dados locais** exige confirmação. Não há dados fictícios pré-carregados.
 
-Nunca coloque `service_role`, `sb_secret_…`, senha do banco ou outra credencial administrativa em variáveis `VITE_*`. `.env.local` é ignorado pelo Git. Não é preciso configurar e-mail, senha ou recuperação de conta.
-
-A identidade automática é persistida no navegador pelo SDK Supabase. Limpar essa sessão ou usar outro navegador cria outra identidade, que não acessa os dados anteriores. Não há migração automática dos registros locais para o Supabase. Por isso, exporte seus registros antes de trocar o armazenamento ou limpar o navegador.
-
-Todas as tabelas mantêm as políticas RLS por identidade. Retirar a tela de login não torna os dados do banco públicos. Nenhuma política foi alterada para permitir acesso irrestrito.
+A versão anterior podia criar sessões anônimas no Supabase. Se uma dessas sessões existir, o formulário tenta vinculá-la ao e-mail antes de abrir a conta, preservando o `user_id`. Novas sessões anônimas não são criadas. Consulte o guia antes de apagar uma sessão antiga com dados.
 
 ## Cadastro por EAN / código de barras
 
@@ -91,12 +78,12 @@ npm run build
 npm run test:e2e
 ```
 
-- **Vitest:** cálculos, datas, histórico, metas, EAN/GTIN, mapeamento nutricional e identidade automática.
-- **PostgreSQL via PGlite:** migrações reais, RLS entre duas identidades, snapshots, validação de EAN e unicidade por usuário. A camada `auth` é simulada somente nos testes.
-- **Playwright:** fluxos em desktop e celular, abertura sem login, preservação dos dados anteriores, consulta EAN, cadastro manual alternativo, nutrientes ausentes, duplicatas e falhas de rede. As respostas do Open Food Facts são simuladas de forma determinística nos testes; nenhum produto fictício é incluído no aplicativo real.
+- **Vitest:** cálculos, datas, histórico, metas, EAN/GTIN, mapeamento nutricional, acesso por e-mail e validação de arquivos de transferência.
+- **PostgreSQL via PGlite:** migrações reais, RLS entre duas identidades, snapshots, EAN, unicidade e transferências atômicas/idempotentes. A camada `auth` é simulada somente nos testes.
+- **Playwright:** fluxos locais em desktop/celular e fluxos de contas com API Supabase simulada: link por e-mail, mesma conta em dois dispositivos, contas separadas, logout, transferência, erros de conexão e links expirados. Inclui os cenários de EAN, nutrientes ausentes e cadastro manual alternativo. As respostas do Open Food Facts são simuladas de forma determinística nos testes; nenhum produto fictício é incluído no aplicativo real.
 
-Os testes de navegador iniciam um servidor próprio na porta **5175**, com as variáveis Supabase vazias, para não modificar registros remotos. Eles usam o Chromium do sistema quando disponível. Em outras máquinas, execute `npx playwright install chromium` ou defina `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
+Os testes de navegador iniciam servidores isolados: **5175** com Supabase vazio para os fluxos locais e **5176** com uma URL de teste interceptada para contas. Nenhum teste de navegador usa as credenciais do seu projeto nem modifica registros remotos. Eles usam o Chromium do sistema quando disponível. Em outras máquinas, execute `npx playwright install chromium` ou defina `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
 
 Após reinstalar `node_modules` com um Vite em execução, reinicie o processo para evitar o cache antigo de dependências (`504 Outdated Optimize Dep`).
 
-**Validação externa pendente:** não há projeto Supabase configurado nesta instância. A consulta real ao Open Food Facts foi negada pela política de rede do ambiente (HTTP 403 do proxy). Os fluxos são verificados com respostas simuladas; a consulta real deve ser repetida após aplicar a liberação de `world.openfoodfacts.org` nas configurações do ambiente.
+**Validação externa pendente:** não há projeto Supabase configurado nesta instância. A entrega real dos links de e-mail e a sincronização no seu projeto precisam ser verificadas após seguir o guia. A consulta ao Open Food Facts também depende da liberação de `world.openfoodfacts.org` no ambiente; a tentativa anterior retornou HTTP 403 do proxy. Os testes de serviços externos usam respostas simuladas.

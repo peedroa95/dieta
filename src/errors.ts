@@ -11,6 +11,10 @@ const messages: Record<string, string> = {
   signup_disabled: "O cadastro está desabilitado neste projeto.",
   email_address_invalid: "Informe um endereço de e-mail válido.",
   same_password: "Escolha uma senha diferente da anterior.",
+  email_exists:
+    "Este e-mail já tem uma conta. Para vincular uma sessão antiga, use outro e-mail ou entre na conta existente em outro navegador.",
+  email_address_not_authorized:
+    "O serviço de e-mail do Supabase ainda precisa ser configurado para enviar links a este endereço.",
   otp_expired: "Este link expirou. Solicite um novo e-mail de recuperação.",
   PGRST205:
     "O banco ainda não está configurado. Execute a migração indicada no README.",

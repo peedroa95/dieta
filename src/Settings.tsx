@@ -1,3 +1,5 @@
+import TransferData from "./TransferData";
+import { localSourceId } from "./transfer";
 import { useState, type FormEvent } from "react";
 import {
   Target,
@@ -426,7 +428,17 @@ export function ProfilePage() {
   );
 }
 export function Settings({ navigate }: { navigate: (p: string) => void }) {
-  const { data, local, today, profile } = useStore();
+  const {
+    data,
+    local,
+    today,
+    profile,
+    email,
+    refresh,
+    refreshing,
+    syncError,
+    setNotice,
+  } = useStore();
   const goal = goalAt(data.daily_goals, today);
   const [editing, setEditing] = useState(false);
   function download() {
@@ -435,6 +447,8 @@ export function Settings({ navigate }: { navigate: (p: string) => void }) {
         JSON.stringify(
           {
             exported_at: new Date().toISOString(),
+            source_id: local ? localSourceId() : undefined,
+            schema_version: 1,
             mode: local ? "local" : "supabase",
             ...data,
           },
@@ -505,8 +519,39 @@ export function Settings({ navigate }: { navigate: (p: string) => void }) {
             <p>
               {local
                 ? "Seus dados ficam salvos neste navegador. Exporte seus registros para manter uma cópia."
-                : "Seus dados são armazenados no Supabase, vinculados à identidade automática deste navegador."}
+                : "Seus dados são salvos na nuvem e vinculados à sua conta. Entre com o mesmo e-mail no celular e no computador."}
             </p>
+            {!local && (
+              <>
+                <p className="account-email">
+                  Conta conectada: <strong>{email}</strong>
+                </p>
+                <button
+                  className="button secondary"
+                  disabled={refreshing}
+                  onClick={() =>
+                    void refresh().then((ok) =>
+                      setNotice(
+                        ok
+                          ? "Dados atualizados."
+                          : "Não foi possível atualizar. Confira sua conexão e tente novamente.",
+                      ),
+                    )
+                  }
+                >
+                  {refreshing ? "Atualizando…" : "Atualizar dados"}
+                </button>
+                <p className="muted small">
+                  Atualização ao voltar ao app e a cada 30 segundos enquanto
+                  estiver aberto.
+                </p>
+                {syncError && (
+                  <p className="error" role="alert">
+                    Não foi possível atualizar: {syncError}
+                  </p>
+                )}
+              </>
+            )}
             <button className="button secondary" onClick={download}>
               <Download size={16} />
               Exportar meus registros
@@ -530,6 +575,7 @@ export function Settings({ navigate }: { navigate: (p: string) => void }) {
               </button>
             )}
           </section>
+          {!local && <TransferData />}
           <section className="card settings-card">
             <div className="card-title">
               <span className="card-icon peach">
