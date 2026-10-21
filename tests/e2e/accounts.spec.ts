@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { MockCloud, alice, bob, enter, nav, createFood } from "./mock-cloud";
 import { transferFixture } from "../fixtures";
 
-test("envia link de acesso sem senha e abre a sessão do e-mail", async ({
+test("entra só com e-mail e mantém a sessão sem enviar mensagem ou solicitar senha", async ({
   page,
   context,
 }) => {
@@ -13,25 +13,24 @@ test("envia link de acesso sem senha e abre a sessão do e-mail", async ({
     page.getByRole("heading", { name: "Seu bem-estar, conectado" }),
   ).toBeVisible();
   await expect(page.getByLabel("Senha", { exact: true })).toHaveCount(0);
-  await page.getByLabel("Seu e-mail", { exact: true }).fill(alice.email);
-  await page.getByRole("button", { name: "Enviar link de acesso" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Confira seu e-mail" }),
-  ).toBeVisible();
-  expect(cloud.sent).toEqual([alice.email]);
-  await expect(
-    page.getByRole("button", { name: /Reenviar em/ }),
-  ).toBeDisabled();
-  await enter(page, alice);
+  await expect(page.getByText(/quem souber seu e-mail/)).toBeVisible();
+  await page
+    .getByLabel("Seu e-mail", { exact: true })
+    .fill("ALICE@example.com");
+  await page.getByRole("button", { name: "Entrar no meu espaço" }).click();
   await expect(
     page.getByRole("heading", { name: "Um dia de cada vez." }),
   ).toBeVisible();
+  expect(cloud.entered).toEqual([alice.email]);
+  expect(cloud.sent).toEqual([]);
+  expect(cloud.signups).toBe(1);
   await nav(page, "Configurações");
   await expect(page.locator(".account-email")).toContainText(alice.email);
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "Um dia de cada vez." }),
   ).toBeVisible();
+  expect(cloud.signups).toBe(1);
   expect(page.url()).not.toContain("access_token");
 });
 
@@ -181,21 +180,52 @@ test("arquivo exportado de outro navegador pode ser transferido", async ({
   expect(cloud.imports).toBe(1);
 });
 
-test("links expirados e limite de envio exibem mensagem clara", async ({
+test("informa como habilitar o acesso direto quando as sessões anônimas estão desativadas", async ({
   page,
   context,
 }) => {
   const cloud = new MockCloud();
-  cloud.otpFailure = true;
+  cloud.signupFailure = true;
   await cloud.attach(context);
-  await page.goto("/#error=access_denied&error_code=otp_expired");
-  await expect(page.getByRole("alert")).toContainText("expirou");
+  await page.goto("/");
   await page.getByLabel("Seu e-mail", { exact: true }).fill(alice.email);
-  await page.getByRole("button", { name: "Enviar link de acesso" }).click();
-  await expect(page.getByRole("alert")).toContainText("Limite de envio");
+  await page.getByRole("button", { name: "Entrar no meu espaço" }).click();
+  await expect(page.getByRole("alert")).toContainText("Anonymous Sign-Ins");
+  expect(cloud.entered).toHaveLength(0);
+  expect(cloud.sent).toHaveLength(0);
+  cloud.signupFailure = false;
+  await page.getByRole("button", { name: "Entrar no meu espaço" }).click();
   await expect(
-    page.getByRole("button", { name: "Enviar link de acesso" }),
-  ).toBeEnabled();
+    page.getByRole("heading", { name: "Um dia de cada vez." }),
+  ).toBeVisible();
+});
+
+test("migração pendente não cria dados locais e permite tentar de novo na mesma sessão", async ({
+  page,
+  context,
+}) => {
+  const cloud = new MockCloud();
+  cloud.migrationFailure = true;
+  await cloud.attach(context);
+  await page.goto("/");
+  await page.getByLabel("Seu e-mail", { exact: true }).fill(alice.email);
+  await page.getByRole("button", { name: "Entrar no meu espaço" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "202610210002_email_spaces.sql",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Um dia de cada vez." }),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() => localStorage.getItem("nutria-demo-v1")),
+  ).toBeNull();
+  cloud.migrationFailure = false;
+  await page.getByRole("button", { name: "Entrar no meu espaço" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Um dia de cada vez." }),
+  ).toBeVisible();
+  expect(cloud.signups).toBe(1);
+  expect(cloud.sent).toHaveLength(0);
 });
 
 test("falha na atualização mantém os registros e permite reconectar", async ({

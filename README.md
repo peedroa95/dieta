@@ -1,6 +1,6 @@
 # Nutria
 
-Aplicativo de alimentação em português brasileiro, com React, TypeScript, Vite e Supabase. **Contas separadas com acesso por link de e-mail, sem senha, e os mesmos registros no celular e no computador.** Permite cadastrar alimentos manualmente ou pelo número EAN/código de barras, registrar refeições e acompanhar nutrientes, água, metas e peso.
+Aplicativo de alimentação em português brasileiro, com React, TypeScript, Vite e Supabase. **Espaços por e-mail, sem senha nem envio de confirmação, com os mesmos registros no celular e no computador.** Permite cadastrar alimentos manualmente ou pelo número EAN/código de barras, registrar refeições e acompanhar nutrientes, água, metas e peso.
 
 ## Executar
 
@@ -16,11 +16,13 @@ O servidor de desenvolvimento usa a porta 5173. `npm run build` gera `dist` para
 
 ## Contas e sincronização
 
-Siga o passo a passo em [CONFIGURAR_SUPABASE.md](CONFIGURAR_SUPABASE.md) para criar o projeto, executar o SQL único de primeira instalação (ou as migrações pendentes), habilitar e-mail, configurar o envio SMTP e as URLs de retorno e definir as duas variáveis públicas na Vercel.
+Siga o passo a passo em [CONFIGURAR_SUPABASE.md](CONFIGURAR_SUPABASE.md) para criar o projeto, executar o SQL único de primeira instalação (ou as migrações pendentes, incluindo a de acesso direto), habilitar Anonymous Sign-Ins e definir as duas variáveis públicas na Vercel.
 
 A compilação aceita `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` ou os nomes públicos `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` fornecidos pela Vercel. Somente esses dois valores públicos são repassados ao cliente; chaves administrativas não são usadas.
 
-Com o Supabase configurado, o app exibe o acesso por **link de e-mail**. Cada pessoa usa seu e-mail, e a mesma conta acessa os mesmos registros em diferentes aparelhos. A sessão persiste no SDK; sair encerra somente a sessão do aparelho atual. As tabelas mantêm RLS por usuário. Nenhuma credencial administrativa vai para o navegador.
+Com o Supabase configurado, basta informar um e-mail e clicar em **Entrar no meu espaço**. Não há senha, OTP nem envio de mensagem. Uma sessão anônima persistente é vinculada no banco ao espaço desse endereço; o mesmo e-mail em outro aparelho resolve o mesmo proprietário. Sair encerra somente a sessão do aparelho atual. Nenhuma credencial administrativa vai para o navegador.
+
+**Esse modo não verifica identidade: quem souber o endereço poderá ler, alterar e excluir seus registros.** A RLS separa os espaços escolhidos, mas não comprova a posse do e-mail. As tabelas de vínculo não são listáveis pelo cliente; as funções `enter_email_space` e `get_email_space` resolvem o espaço no banco.
 
 Os dados são lidos na abertura, ao voltar para a janela e a cada 30 segundos enquanto o app estiver visível. Configurações também oferece **Atualizar dados**. Respostas antigas de atualização não substituem o resultado de uma gravação recente. Uma falha de leitura preserva a tela atual e permite tentar novamente.
 
@@ -32,7 +34,7 @@ A transferência usa a migração `202610210001_account_transfers.sql`: é atôm
 
 Sem as variáveis do Supabase, o modo local continua acessível com um aviso de que não há sincronização. A chave interna `nutria-demo-v1` foi preservada para compatibilidade. **Exportar meus registros** baixa uma cópia JSON; **Apagar dados locais** exige confirmação. Não há dados fictícios pré-carregados.
 
-A versão anterior podia criar sessões anônimas no Supabase. Se uma dessas sessões existir, o formulário tenta vinculá-la ao e-mail antes de abrir a conta, preservando o `user_id`. Novas sessões anônimas não são criadas. Consulte o guia antes de apagar uma sessão antiga com dados.
+A migração `202610210002_email_spaces.sql` preserva contas antigas por link e vincula novas sessões ao mesmo proprietário dos registros. Sessões anônimas antigas sem e-mail também podem ser vinculadas na primeira entrada. Não remova usuários anônimos sem preservar os dados: eles podem ser proprietários dos registros. A identificação do proprietário é feita por `nutria_user_id()`; os RPCs de inicialização, receitas e transferências usam essa mesma identidade, independentemente do aparelho.
 
 ## Cadastro por EAN / código de barras
 
@@ -80,12 +82,12 @@ npm run build
 npm run test:e2e
 ```
 
-- **Vitest:** cálculos, datas, histórico, metas, EAN/GTIN, mapeamento nutricional, acesso por e-mail e validação de arquivos de transferência.
+- **Vitest:** cálculos, datas, histórico, metas, EAN/GTIN, mapeamento nutricional, acesso direto por e-mail e validação de arquivos de transferência.
 - **PostgreSQL via PGlite:** migrações reais, RLS entre duas identidades, snapshots, EAN, unicidade e transferências atômicas/idempotentes. A camada `auth` é simulada somente nos testes.
-- **Playwright:** fluxos locais em desktop/celular e fluxos de contas com API Supabase simulada: link por e-mail, mesma conta em dois dispositivos, contas separadas, logout, transferência, erros de conexão e links expirados. Inclui os cenários de EAN, nutrientes ausentes e cadastro manual alternativo. As respostas do Open Food Facts são simuladas de forma determinística nos testes; nenhum produto fictício é incluído no aplicativo real.
+- **Playwright:** fluxos locais em desktop/celular e fluxos de contas com API Supabase simulada: acesso somente por e-mail, mesmo espaço em dois dispositivos, espaços separados, logout, transferência, migração pendente, sessões anônimas desabilitadas e erros de conexão. Inclui os cenários de EAN, nutrientes ausentes e cadastro manual alternativo. As respostas do Open Food Facts são simuladas de forma determinística nos testes; nenhum produto fictício é incluído no aplicativo real.
 
 Os testes de navegador iniciam servidores isolados: **5175** com Supabase vazio para os fluxos locais e **5176** com uma URL de teste interceptada para contas. Nenhum teste de navegador usa as credenciais do seu projeto nem modifica registros remotos. Eles usam o Chromium do sistema quando disponível. Em outras máquinas, execute `npx playwright install chromium` ou defina `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
 
 Após reinstalar `node_modules` com um Vite em execução, reinicie o processo para evitar o cache antigo de dependências (`504 Outdated Optimize Dep`).
 
-**Validação externa:** o projeto Supabase respondeu às consultas de configuração, com e-mail habilitado. Na última verificação, as tabelas do Nutria ainda não estavam disponíveis (`PGRST205`); o arquivo de primeira instalação precisa ser executado no SQL Editor. A entrega real dos links de e-mail e a sincronização no seu projeto precisam ser verificadas após seguir o guia. A consulta ao Open Food Facts também depende da liberação de `world.openfoodfacts.org` no ambiente; a tentativa anterior retornou HTTP 403 do proxy. Os testes de serviços externos usam respostas simuladas.
+**Validação externa:** o Supabase respondeu às consultas de configuração. A ativação do acesso direto precisa da quarta migração e de Anonymous Sign-Ins habilitado; essas mudanças são feitas no painel, conforme o guia. A consulta ao Open Food Facts depende da liberação de `world.openfoodfacts.org`; a tentativa anterior retornou HTTP 403 do proxy. Os testes de navegador dos serviços externos usam respostas simuladas.

@@ -11,6 +11,7 @@ import {
 } from "./domain";
 import { barcodeValue } from "./barcodes";
 import { errorMessage } from "./errors";
+import { getAccount } from "./auth";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const sourceKey = "nutria-local-source-v1";
 export interface TransferResult {
@@ -166,14 +167,8 @@ export async function transferToAccount(
     throw new Error(
       "Estes dados locais já foram transferidos para outra conta.",
     );
-  const { data: session, error: sessionError } =
-    await supabase.auth.getSession();
-  if (sessionError) throw new Error(errorMessage(sessionError));
-  if (
-    !session.session ||
-    session.session.user.id !== userId ||
-    session.session.user.is_anonymous
-  )
+  const account = await getAccount();
+  if (!account || account.id !== userId)
     throw new Error("A conta mudou. Entre novamente antes de transferir.");
   const { data: result, error } = await supabase.rpc("transfer_local_data", {
     payload: validateTransfer(data),

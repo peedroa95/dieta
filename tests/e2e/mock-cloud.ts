@@ -22,7 +22,7 @@ const cors = {
   "access-control-allow-headers": "*",
   "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
 };
-export function session(person: Person) {
+export function session(person: Person, anonymous = false) {
   const expires = Math.floor(Date.now() / 1000) + 3600;
   const jwt =
     Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString(
@@ -36,7 +36,7 @@ export function session(person: Person) {
         role: "authenticated",
         aud: "authenticated",
         exp: expires,
-        is_anonymous: false,
+        is_anonymous: anonymous,
       }),
     ).toString("base64url") +
     ".test-signature";
@@ -48,9 +48,10 @@ export function session(person: Person) {
     expires_at: expires,
     user: {
       ...person,
+      email: anonymous ? undefined : person.email,
       aud: "authenticated",
       role: "authenticated",
-      is_anonymous: false,
+      is_anonymous: anonymous,
       app_metadata: { provider: "email", providers: ["email"] },
       user_metadata: {},
       identities: [],
@@ -61,7 +62,16 @@ export function session(person: Person) {
 export class MockCloud {
   data = new Map<string, Data>();
   sent: string[] = [];
-  otpFailure = false;
+  entered: string[] = [];
+  signupFailure = false;
+  migrationFailure = false;
+  signups = 0;
+  guests = new Set<string>();
+  memberships = new Map<string, Person>();
+  spaces = new Map<string, Person>([
+    [alice.email, alice],
+    [bob.email, bob],
+  ]);
   readFailure = false;
   imports = 0;
   state(person: Person) {
@@ -117,21 +127,52 @@ export class MockCloud {
     } catch {
       /* Public auth endpoints have no user yet. */
     }
-    const person = uid === alice.id ? alice : uid === bob.id ? bob : null;
+    const person =
+      this.memberships.get(uid) ||
+      (uid === alice.id ? alice : uid === bob.id ? bob : null);
+    if (url.pathname === "/auth/v1/signup") {
+      this.signups++;
+      if (this.signupFailure)
+        return reply(422, {
+          code: "anonymous_provider_disabled",
+          message: "Anonymous sign-ins disabled",
+        });
+      const guest = { id: crypto.randomUUID(), email: "" };
+      this.guests.add(guest.id);
+      return reply(200, session(guest, true));
+    }
     if (url.pathname === "/auth/v1/otp") {
-      const body = request.postDataJSON();
-      this.sent.push(body.email);
-      return this.otpFailure
-        ? reply(429, {
-            code: "over_email_send_rate_limit",
-            message: "Too many emails",
-          })
-        : reply(200, {});
+      this.sent.push(request.postDataJSON().email);
+      return reply(400, { message: "Email links are not part of this flow" });
+    }
+    if (url.pathname === "/rest/v1/rpc/get_email_space") {
+      if (this.migrationFailure)
+        return reply(404, { code: "PGRST202", message: "Missing RPC" });
+      if (!person && !this.guests.has(uid))
+        return reply(401, { message: "Authentication required" });
+      return reply(200, person);
+    }
+    if (url.pathname === "/rest/v1/rpc/enter_email_space") {
+      if (this.migrationFailure)
+        return reply(404, { code: "PGRST202", message: "Missing RPC" });
+      if (!person && !this.guests.has(uid))
+        return reply(401, { message: "Authentication required" });
+      const email = request.postDataJSON().address;
+      let target = this.spaces.get(email);
+      if (!target) {
+        target = { id: uid, email };
+        this.spaces.set(email, target);
+      }
+      this.entered.push(email);
+      this.memberships.set(uid, target);
+      return reply(200, target);
     }
     if (url.pathname === "/auth/v1/user")
       return person
         ? reply(200, session(person).user)
-        : reply(401, { message: "Invalid test identity" });
+        : this.guests.has(uid)
+          ? reply(200, session({ id: uid, email: "" }, true).user)
+          : reply(401, { message: "Invalid test identity" });
     if (url.pathname === "/auth/v1/logout") return reply(200, {});
     if (!person) return reply(401, { message: "Authentication required" });
     const data = this.state(person);
@@ -192,17 +233,9 @@ export class MockCloud {
   private imported = new Set<string>();
 }
 export async function enter(page: Page, person: Person) {
-  const s = session(person);
-  await page.goto("about:blank");
-  const base = "http://127.0.0.1:5176/";
-  await page.goto(
-    base +
-      "#access_token=" +
-      s.access_token +
-      "&refresh_token=" +
-      s.refresh_token +
-      "&type=magiclink&expires_in=3600&token_type=bearer",
-  );
+  await page.goto("/");
+  await page.getByLabel("Seu e-mail", { exact: true }).fill(person.email);
+  await page.getByRole("button", { name: "Entrar no meu espaço" }).click();
 }
 export async function nav(page: Page, name: string) {
   if (page.viewportSize()!.width < 680)

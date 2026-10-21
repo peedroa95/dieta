@@ -20,12 +20,12 @@ import {
 import { supabase, LOCAL_ID, initialize, load } from "./api";
 import {
   getAccount,
-  isAccount,
+  accountChanged,
+  type Account,
   signOutAccount,
   callbackError,
   initialAccessError,
 } from "./auth";
-import type { User as AccountUser } from "@supabase/supabase-js";
 import Auth from "./Auth";
 import { StoreProvider, useStore } from "./store";
 import { dateInZone, type Data } from "./domain";
@@ -49,7 +49,7 @@ function Shell({
   account,
   onExit,
 }: {
-  account: AccountUser | null;
+  account: Account | null;
   onExit: () => Promise<void>;
 }) {
   const {
@@ -275,7 +275,7 @@ function Shell({
 }
 export default function App() {
   const local = !supabase;
-  const [account, setAccount] = useState<AccountUser | null>(null);
+  const [account, setAccount] = useState<Account | null>(null);
   const [authReady, setAuthReady] = useState(local);
   const [authError, setAuthError] = useState(initialAccessError);
   const [ready, setReady] = useState<{ data: Data; userId: string } | null>(
@@ -286,34 +286,49 @@ export default function App() {
   useEffect(() => {
     if (!supabase) return;
     let cancelled = false;
-    let eventVersion = 0;
+    let version = 0;
     if (authError) callbackError();
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      eventVersion++;
-      if (!cancelled) {
-        setAccount(isAccount(session?.user) ? session!.user : null);
-        if (isAccount(session?.user)) setAuthError("");
-        setAuthReady(true);
-      }
-    });
-    void getAccount()
-      .then((user) => {
-        if (!cancelled && eventVersion === 0) {
+    async function refreshAccount() {
+      const request = ++version;
+      try {
+        const user = await getAccount();
+        if (!cancelled && request === version) {
           setAccount(user);
           setAuthReady(true);
+          if (user) setAuthError("");
         }
-      })
-      .catch((e) => {
-        if (!cancelled && eventVersion === 0) {
-          setAuthError(e.message);
+      } catch (e) {
+        if (!cancelled && request === version) {
+          setAuthError((e as Error).message);
           setAuthReady(true);
         }
-      });
+      }
+    }
+    const changed = () => {
+      void refreshAccount();
+    };
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        version++;
+        if (!cancelled) {
+          setAccount(null);
+          setAuthReady(true);
+        }
+      } else {
+        // Supabase holds its auth lock during this callback; read the RPC afterwards.
+        setTimeout(() => {
+          if (!cancelled) void refreshAccount();
+        }, 0);
+      }
+    });
+    window.addEventListener(accountChanged, changed);
+    void refreshAccount();
     return () => {
       cancelled = true;
       subscription.unsubscribe();
+      window.removeEventListener(accountChanged, changed);
     };
   }, []);
   const activeId = local ? LOCAL_ID : account?.id;

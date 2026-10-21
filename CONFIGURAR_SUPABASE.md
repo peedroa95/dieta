@@ -1,85 +1,70 @@
-# Ativar contas e sincronização no Nutria
+# Ativar acesso direto por e-mail no Nutria
 
-Depois desta configuração, você entra com seu e-mail no celular e no computador e acessa os mesmos registros. Outra pessoa usa o próprio e-mail e tem dados separados. O acesso funciona com link por e-mail, sem senha.
+O aplicativo usa somente o e-mail informado, sem senha, código ou mensagem de confirmação. O mesmo endereço abre o mesmo espaço no celular e no computador. Outro endereço abre um espaço separado.
 
-## 1. Criar o projeto
+**Este modo não verifica identidade. Qualquer pessoa que souber um e-mail poderá abrir, alterar e excluir os registros associados a ele.** A sessão anônima é apenas a conexão técnica com o Supabase; não prova que a pessoa é dona do e-mail. Não há autenticação privada por endereço.
 
-Acesse https://supabase.com/dashboard, crie uma conta e um projeto e aguarde a inicialização. A senha do banco fica somente no Supabase; ela não vai no aplicativo.
+## 1. Criar ou atualizar as tabelas
 
-## 2. Criar ou atualizar as tabelas
+No seu projeto Supabase, abra **SQL Editor → New query**.
 
-Para um projeto novo, sem tabelas do Nutria, abra **SQL Editor → New query**, cole **todo** o conteúdo de [`supabase/primeira_instalacao.sql`](supabase/primeira_instalacao.sql) e clique em **Run**. Esse arquivo reúne as três migrações em uma única transação.
+- **Projeto novo, sem tabelas Nutria:** copie todo o conteúdo de [`supabase/primeira_instalacao.sql`](supabase/primeira_instalacao.sql) e clique em **Run**. O arquivo reúne as quatro migrações em uma única transação.
+- **Projeto que já executou as três migrações anteriores:** execute somente [`supabase/migrations/202610210002_email_spaces.sql`](supabase/migrations/202610210002_email_spaces.sql). Essa atualização preserva os registros existentes.
+- **Projeto parcialmente instalado:** execute apenas as migrações pendentes, na ordem abaixo. Não apague as tabelas nem reaplique migrações já executadas.
 
-Para um projeto que já tenha tabelas, use somente as migrações pendentes, nesta ordem:
+1. `202610200001_initial.sql`
+2. `202610200002_food_barcodes.sql`
+3. `202610210001_account_transfers.sql`
+4. `202610210002_email_spaces.sql`
 
-1. `supabase/migrations/202610200001_initial.sql`
-2. `supabase/migrations/202610200002_food_barcodes.sql`
-3. `supabase/migrations/202610210001_account_transfers.sql`
+Os arquivos estão no GitHub. Abra o arquivo, clique em **Raw** e copie o conteúdo inteiro. A chave pública não permite aplicar essas alterações pelo aplicativo; execute-as no SQL Editor.
 
-Se você já executou os dois primeiros, execute **somente o terceiro**. Não apague tabelas nem reaplique os arquivos anteriores. O terceiro acrescenta a transferência do histórico local sem apagar dados.
+A quarta migração cria `email_spaces` (e-mail e proprietário dos registros) e `email_space_sessions` (sessões dos aparelhos vinculadas ao espaço). Essas tabelas não podem ser listadas diretamente pelo cliente. As funções permitem escolher um espaço informando o endereço, sem comprovar sua posse. A RLS limita cada sessão ao espaço escolhido; não impede alguém de escolher um endereço conhecido.
 
-Os arquivos estão no repositório do GitHub. Abra o arquivo, clique em **Raw** e copie o conteúdo inteiro.
+## 2. Habilitar sessões anônimas
 
-## 3. Habilitar acesso por e-mail
+Em **Authentication → Sign In / Providers → Anonymous Sign-Ins**, habilite **Allow anonymous sign-ins** e salve. O nome da opção pode variar conforme a versão do painel.
 
-Em **Authentication → Sign In / Providers**, mantenha o provedor **Email** habilitado e permita novos cadastros. O aplicativo usa `signInWithOtp` com criação de conta permitida e o link de acesso por e-mail. Nenhuma senha é solicitada.
+Não é necessário desativar a confirmação do provedor Email. O novo fluxo não usa `signInWithOtp`, não cadastra o endereço no provedor Email e não envia mensagens. O e-mail é salvo em `public.email_spaces`.
 
-Não é necessário habilitar **Anonymous Sign-Ins** para novas contas. Se existe uma sessão anônima da versão anterior, o aplicativo tenta vinculá-la ao e-mail informado para preservar seu identificador e seus registros. Nesse caso, confirme o e-mail pelo link recebido antes de trocar de navegador. Se esse e-mail já possui outra conta, não apague a sessão antiga; use outro e-mail para vinculá-la e conservar os dados.
+Cada aparelho mantém uma sessão técnica persistente. Ao digitar o mesmo e-mail em outro aparelho, a função do banco vincula a nova sessão ao mesmo proprietário. Sair encerra somente a sessão do aparelho atual. Não remova usuários anônimos do painel nem configure limpeza automática sem antes preservar os registros: eles podem ser proprietários dos dados e as referências existentes usam `auth.users`.
 
-## 4. Configurar o endereço da Vercel
+O Supabase pode aplicar limites à criação de sessões anônimas. Se configurar CAPTCHA para essas sessões, a interface também precisará integrar o provedor e enviar o token; não o ative sem esse ajuste.
 
-Em **Authentication → URL Configuration**:
+## 3. Configurar a Vercel
 
-- **Site URL:** o endereço publicado do app, `https://dieta-beryl-two.vercel.app`.
-- **Redirect URLs:** acrescente esse mesmo endereço com `/` no final, `https://dieta-beryl-two.vercel.app/`.
-
-Se você usar domínio próprio ou um endereço de prévia diferente, inclua a origem correspondente. O link retorna à origem em que foi solicitado. O aplicativo usa o fluxo implícito do Supabase, permitindo abrir o link em outro dispositivo. Mantenha o modelo de e-mail **Magic Link** com o link padrão `{{ .ConfirmationURL }}`. Não substitua por um fluxo PKCE ou somente por um código numérico sem ajustar o aplicativo.
-
-## 5. Configurar a entrega dos e-mails
-
-O envio padrão do Supabase tem limites e pode aceitar apenas endereços autorizados da equipe do projeto. Para você e sua namorada receberem links em seus e-mails, configure um provedor SMTP em **Authentication → Email / SMTP Settings**, conforme o painel e a documentação do Supabase.
-
-As credenciais SMTP devem ser cadastradas somente nas configurações seguras do Supabase. Não as coloque no código, no GitHub ou em variáveis `VITE_*`. O aplicativo não envia e-mails diretamente; ele solicita os links ao Supabase.
-
-## 6. Configurar as variáveis na Vercel
-
-No Supabase, em **Project Settings → API / API Keys**, copie a URL do projeto e a chave **publishable** (`sb_publishable_…`) ou a chave pública legada **anon**.
-
-Na Vercel, abra **Project → Settings → Environment Variables** e crie:
+Em **Project → Settings → Environment Variables**, importe o arquivo `.env` preparado ou crie as duas variáveis públicas:
 
 ```dotenv
 VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=SUA-CHAVE-PUBLICA
 ```
 
-A integração da Vercel também pode fornecer `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY`: a compilação aceita esses dois nomes públicos como alternativa. Se houver variáveis `VITE_` definidas, elas têm prioridade. `SUPABASE_SECRET_KEY` e `SUPABASE_JWKS_URL` não são usados no navegador. Não copie uma chave secreta para o campo de chave pública.
+A compilação também aceita `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY` como alternativa. Se as variáveis `VITE_` estiverem definidas, elas têm prioridade. `SUPABASE_SECRET_KEY` e `SUPABASE_JWKS_URL` não são utilizados no navegador. Não copie uma chave administrativa para o campo público.
 
-Marque os ambientes em que o app deve funcionar e faça um **Redeploy**, pois o Vite lê essas variáveis durante a compilação. Não use a chave `service_role`, `sb_secret_…` nem a senha do banco. A chave pública não dá acesso aos dados de outras contas: as políticas RLS exigem a sessão do proprietário.
+Marque os ambientes em que o app deve funcionar e faça um **Redeploy**, pois as variáveis são lidas na compilação. Nenhuma configuração SMTP ou URL de confirmação é necessária para o acesso direto. Não use a chave `service_role`, `sb_secret_…` ou a senha do banco no aplicativo.
 
-Para desenvolver neste ambiente, preencha as mesmas variáveis em `.env.local` ou nas configurações do ambiente e reinicie o Vite. Sem essas variáveis, o aplicativo preserva o modo local e informa que os registros ficam somente no navegador.
+Para desenvolver, mantenha as duas variáveis em `.env.local` ou nas configurações do ambiente e reinicie o Vite. Os arquivos `.env` e `.env.local` são ignorados pelo Git. Sem Supabase configurado, o app continua no modo local e informa que os registros ficam apenas no navegador.
 
-## 7. Entrar e trazer os registros antigos
+## 4. Acessar e trazer registros antigos
 
-1. Abra o app publicado, informe seu e-mail e clique em **Enviar link de acesso**.
-2. Abra o link recebido. Confira também a pasta de spam.
-3. No navegador em que você já cadastrava alimentos, vá a **Configurações → Trazer meus registros → Transferir dados locais**.
-4. Confira o **e-mail de destino** e confirme. Não transfira os seus registros enquanto estiver na conta de outra pessoa.
-5. No celular, abra o mesmo endereço e entre com o **mesmo e-mail**. Os registros da conta serão lidos da nuvem.
-6. Sua namorada pode entrar com outro e-mail e começar um diário separado.
+1. Abra `https://dieta-beryl-two.vercel.app/`, informe o e-mail e clique em **Entrar no meu espaço**. Não será enviado e-mail.
+2. No celular, acesse o mesmo endereço e informe o mesmo e-mail. Maiúsculas e espaços nas extremidades são normalizados.
+3. Outra pessoa pode informar outro e-mail para usar um diário separado, observando a limitação de privacidade descrita acima.
+4. Para registros locais, abra **Configurações → Trazer meus registros → Transferir dados locais**, confira o e-mail de destino e confirme. Não há transferência automática.
+5. Para dados de outro navegador/endereço, exporte um JSON na versão anterior e use **Importar arquivo JSON** no espaço de destino.
 
-Os registros são atualizados ao abrir o app, ao voltar para a janela e a cada 30 segundos enquanto ela estiver visível. Também existe **Atualizar dados** em Configurações. Não é necessário habilitar publicação de tabelas para Realtime.
+Os dados de contas antigas por link são preservados: ao informar o e-mail, o banco reutiliza o identificador anterior de `auth.users`. Uma sessão antiga já conectada também continua funcionando. Registros anônimos antigos ainda sem endereço podem ser vinculados ao e-mail na mesma sessão. A cópia local não é apagada.
 
-### Se os dados antigos estiverem em outro endereço
+A transferência é uma transação: ou todos os registros válidos são processados, ou nenhum é gravado. Repetir o mesmo lote não duplica os registros. Snapshots nutricionais são preservados; alimentos por EAN, metas, pesos e perfil já existentes na nuvem são mantidos.
 
-Dados do navegador pertencem à origem onde foram cadastrados. Se você usava outro endereço, abra a versão antiga nele e use **Configurações → Exportar meus registros**. Na nova versão, entre em sua conta e escolha **Importar arquivo JSON**. A cópia original não é apagada.
+Os registros são atualizados ao abrir o app, ao voltar para a janela e a cada 30 segundos enquanto ela estiver visível. Também existe **Atualizar dados** em Configurações. Não é necessário habilitar Realtime.
 
-A transferência é uma transação: ou todos os registros válidos são processados, ou nenhum é gravado. É possível tentar novamente sem duplicar o mesmo lote. O histórico nutricional é preservado mesmo quando o cadastro atual mudou ou o alimento foi excluído. Alimentos com EAN já existente são reutilizados; metas e pesos da mesma data já presentes na nuvem não são substituídos. Um perfil preenchido na nuvem também é mantido.
+## 5. Conferir
 
-### Verificação final
+- Cadastre um alimento no computador e entre com o mesmo e-mail no celular; o alimento deve aparecer.
+- Entre com outro e-mail; o alimento do primeiro espaço não deve aparecer.
+- Saia e confira que os registros deixam de aparecer na tela.
+- Transfira um arquivo duas vezes; a segunda tentativa deve informar que já foi processado.
 
-- Entre com o mesmo e-mail em dois navegadores: cadastre um alimento em um e confirme que ele aparece no outro após atualizar.
-- Entre com outro e-mail: o alimento da primeira conta não deve aparecer.
-- Saia da conta e confira que os registros deixam de aparecer.
-- Transfira um arquivo duas vezes: a segunda tentativa deve informar que já foi processado, sem duplicação.
-
-Os testes automatizados usam identidades, API de e-mail e armazenamento simulados, além do PostgreSQL via PGlite para validar RLS e transferências. A entrega de e-mails e a conexão com o seu projeto precisam ser verificadas depois da configuração acima.
+Os testes automatizados usam sessões e API Supabase simuladas no navegador, além de PostgreSQL via PGlite para validar as migrações, a separação por espaço e as transferências. A ativação real exige executar a migração, habilitar Anonymous Sign-Ins e publicar a versão atualizada.

@@ -1,14 +1,12 @@
 import { beforeEach, afterEach, it, expect, vi } from "vitest";
-const auth = vi.hoisted(() => ({
-  getSession: vi.fn(),
-  signInWithOtp: vi.fn(),
-  updateUser: vi.fn(),
-  signOut: vi.fn(),
+const mock = vi.hoisted(() => ({
+  auth: { getSession: vi.fn(), signInAnonymously: vi.fn(), signOut: vi.fn() },
+  rpc: vi.fn(),
 }));
-vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ auth }) }));
+vi.mock("@supabase/supabase-js", () => ({ createClient: () => mock }));
 beforeEach(() => {
   vi.resetModules();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   vi.stubEnv("VITE_SUPABASE_URL", "https://test.supabase.co");
   vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "public-test-key");
   vi.stubGlobal("window", {
@@ -19,85 +17,102 @@ beforeEach(() => {
       hash: "",
     },
     history: { replaceState: vi.fn() },
+    dispatchEvent: vi.fn(),
   });
-  auth.getSession.mockResolvedValue({ data: { session: null }, error: null });
+  mock.auth.getSession.mockResolvedValue({
+    data: { session: null },
+    error: null,
+  });
+  mock.auth.signInAnonymously.mockResolvedValue({
+    data: { session: {} },
+    error: null,
+  });
+  mock.rpc.mockResolvedValue({
+    data: { id: "owner", email: "person@example.com" },
+    error: null,
+  });
 });
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
-it("exige conta por e-mail em vez de criar identidade anônima", async () => {
+it("não abre perfil sem sessão nem cria sessão automaticamente", async () => {
   const { getAccount } = await import("../src/auth");
   expect(await getAccount()).toBeNull();
+  expect(mock.auth.signInAnonymously).not.toHaveBeenCalled();
+  expect(mock.rpc).not.toHaveBeenCalled();
 });
-it("reutiliza a mesma conta em aparelhos diferentes", async () => {
-  auth.getSession.mockResolvedValue({
-    data: {
-      session: {
-        user: {
-          id: "same-user",
-          email: "person@example.com",
-          is_anonymous: false,
-        },
-      },
-    },
+it("resolve o proprietário no banco, sem confundir a sessão do aparelho com o perfil", async () => {
+  mock.auth.getSession.mockResolvedValue({
+    data: { session: { user: { id: "device-session", is_anonymous: true } } },
     error: null,
   });
   const { getAccount } = await import("../src/auth");
-  expect((await getAccount())?.id).toBe("same-user");
-});
-it("não abre dados da antiga sessão anônima sem vincular e-mail", async () => {
-  auth.getSession.mockResolvedValue({
-    data: { session: { user: { id: "old", is_anonymous: true } } },
-    error: null,
-  });
-  const { getAccount } = await import("../src/auth");
-  expect(await getAccount()).toBeNull();
-});
-it("envia link sem senha permitindo novas contas e retorno ao app", async () => {
-  auth.signInWithOtp.mockResolvedValue({ error: null });
-  const { sendAccessLink } = await import("../src/auth");
-  await sendAccessLink(" PERSON@example.com ");
-  expect(auth.signInWithOtp).toHaveBeenCalledWith({
+  expect(await getAccount()).toEqual({
+    id: "owner",
     email: "person@example.com",
-    options: {
-      emailRedirectTo: "https://nutria.example/",
-      shouldCreateUser: true,
-    },
   });
+  expect(mock.rpc).toHaveBeenCalledWith("get_email_space");
 });
-it("vincula a sessão anônima anterior sem perder o id dos registros", async () => {
-  auth.getSession.mockResolvedValue({
-    data: { session: { user: { id: "old", is_anonymous: true } } },
+it("uma sessão ainda não vinculada continua no formulário", async () => {
+  mock.auth.getSession.mockResolvedValue({
+    data: { session: { user: { id: "guest" } } },
     error: null,
   });
-  auth.updateUser.mockResolvedValue({ error: null });
-  const { sendAccessLink } = await import("../src/auth");
-  await sendAccessLink("person@example.com");
-  expect(auth.updateUser).toHaveBeenCalledWith(
-    { email: "person@example.com" },
-    { emailRedirectTo: "https://nutria.example/" },
-  );
-  expect(auth.signInWithOtp).not.toHaveBeenCalled();
+  mock.rpc.mockResolvedValue({ data: null, error: null });
+  const { getAccount } = await import("../src/auth");
+  expect(await getAccount()).toBeNull();
 });
-it("traduz limite de e-mail e permite tentar novamente", async () => {
-  auth.signInWithOtp.mockResolvedValue({
-    error: { code: "over_email_send_rate_limit" },
+it("entra apenas com e-mail usando a sessão técnica e sem solicitar OTP", async () => {
+  const { enterEmailSpace } = await import("../src/auth");
+  await enterEmailSpace(" PERSON@example.com ");
+  expect(mock.auth.signInAnonymously).toHaveBeenCalledOnce();
+  expect(mock.rpc).toHaveBeenCalledWith("enter_email_space", {
+    address: "person@example.com",
   });
-  const { sendAccessLink } = await import("../src/auth");
-  await expect(sendAccessLink("p@example.com")).rejects.toThrow(
-    "Limite de envio",
+  expect(window.dispatchEvent).toHaveBeenCalledOnce();
+});
+it("reutiliza sessões existentes para preservar dados antigos", async () => {
+  mock.auth.getSession.mockResolvedValue({
+    data: { session: { user: { id: "old" } } },
+    error: null,
+  });
+  const { enterEmailSpace } = await import("../src/auth");
+  await enterEmailSpace("person@example.com");
+  expect(mock.auth.signInAnonymously).not.toHaveBeenCalled();
+});
+it("informa como habilitar sessões anônimas e não tenta salvar sem sessão", async () => {
+  mock.auth.signInAnonymously.mockResolvedValue({
+    error: { code: "anonymous_provider_disabled" },
+  });
+  const { enterEmailSpace } = await import("../src/auth");
+  await expect(enterEmailSpace("person@example.com")).rejects.toThrow(
+    "Anonymous Sign-Ins",
   );
+  expect(mock.rpc).not.toHaveBeenCalled();
+});
+it("informa a migração pendente sem abrir dados de outro espaço", async () => {
+  mock.rpc.mockResolvedValue({ data: null, error: { code: "PGRST202" } });
+  const { enterEmailSpace } = await import("../src/auth");
+  await expect(enterEmailSpace("person@example.com")).rejects.toThrow(
+    "202610210002_email_spaces.sql",
+  );
+  expect(window.dispatchEvent).not.toHaveBeenCalled();
+});
+it("não cria sessão para endereço inválido", async () => {
+  const { enterEmailSpace } = await import("../src/auth");
+  await expect(enterEmailSpace("invalid")).rejects.toThrow("e-mail válido");
+  expect(mock.auth.signInAnonymously).not.toHaveBeenCalled();
 });
 it("sai apenas do aparelho atual", async () => {
-  auth.signOut.mockResolvedValue({ error: null });
+  mock.auth.signOut.mockResolvedValue({ error: null });
   const { signOutAccount } = await import("../src/auth");
   await signOutAccount();
-  expect(auth.signOut).toHaveBeenCalledWith({ scope: "local" });
+  expect(mock.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
 });
-it("remove o erro de retorno da URL sem expor tokens", async () => {
+it("limpa erros de links antigos e orienta o acesso direto", async () => {
   window.location.hash = "#error=access_denied&error_code=otp_expired";
   const { callbackError } = await import("../src/auth");
-  expect(callbackError()).toContain("expirou");
+  expect(callbackError()).toContain("informar seu e-mail");
   expect(window.history.replaceState).toHaveBeenCalledWith(null, "", "/");
 });

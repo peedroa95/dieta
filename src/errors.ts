@@ -1,4 +1,8 @@
 const messages: Record<string, string> = {
+  anonymous_provider_disabled:
+    "Ative Anonymous Sign-Ins em Authentication → Sign In / Providers no Supabase para entrar sem confirmação.",
+  PGRST202:
+    "Execute a migração 202610210002_email_spaces.sql no SQL Editor do Supabase para ativar o acesso direto por e-mail.",
   invalid_credentials: "E-mail ou senha incorretos.",
   email_not_confirmed: "Confirme seu e-mail antes de entrar.",
   user_already_exists:
