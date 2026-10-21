@@ -405,11 +405,39 @@ export default function Foods() {
           </button>
         </div>
         {foods.length ? (
-          <div className="food-grid">
+          <ul
+            className="food-list"
+            aria-label="Alimentos cadastrados"
+            role="list"
+          >
             {foods.map((food) => (
-              <article className="food-card" key={food.id}>
-                <div className="food-card-top">
+              <li className="food-card" key={food.id}>
+                <div className="food-details">
+                  <h3>{food.name}</h3>
                   <span className="food-category">{food.category}</span>
+                  <p>
+                    {food.brand || "Cadastro pessoal"} ·{" "}
+                    {format(food.reference)} {food.unit}
+                  </p>
+                  {food.barcode && (
+                    <p className="food-barcode">
+                      <Barcode size={13} />
+                      EAN {food.barcode}
+                    </p>
+                  )}
+                  {food.source_url && (
+                    <a
+                      className="food-source-link"
+                      href={food.source_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Dados: Open Food Facts · ODbL
+                    </a>
+                  )}
+                </div>
+                <NutrientPills nutrition={food} />
+                <div className="food-card-actions">
                   <button
                     disabled={busy}
                     className={`icon-button ${food.favorite ? "favorite" : ""}`}
@@ -427,30 +455,6 @@ export default function Foods() {
                       fill={food.favorite ? "currentColor" : "none"}
                     />
                   </button>
-                </div>
-                <h3>{food.name}</h3>
-                <p>
-                  {food.brand || "Cadastro pessoal"} · {format(food.reference)}{" "}
-                  {food.unit}
-                </p>
-                {food.barcode && (
-                  <p className="food-barcode">
-                    <Barcode size={13} />
-                    EAN {food.barcode}
-                  </p>
-                )}
-                <NutrientPills nutrition={food} />
-                {food.source_url && (
-                  <a
-                    className="food-source-link"
-                    href={food.source_url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Dados: Open Food Facts · ODbL
-                  </a>
-                )}
-                <div className="food-card-actions">
                   <button
                     className="text-button"
                     onClick={() => setEditor(food)}
@@ -499,9 +503,9 @@ export default function Foods() {
                     <Trash2 size={15} />
                   </button>
                 </div>
-              </article>
+              </li>
             ))}
-          </div>
+          </ul>
         ) : (
           <Empty
             title={
