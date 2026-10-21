@@ -16,7 +16,9 @@ O servidor de desenvolvimento usa a porta 5173. `npm run build` gera `dist` para
 
 ## Contas e sincronização
 
-Siga o passo a passo em [CONFIGURAR_SUPABASE.md](CONFIGURAR_SUPABASE.md) para criar o projeto, executar as três migrações, habilitar e-mail, configurar o envio SMTP e as URLs de retorno e definir as duas variáveis públicas na Vercel.
+Siga o passo a passo em [CONFIGURAR_SUPABASE.md](CONFIGURAR_SUPABASE.md) para criar o projeto, executar o SQL único de primeira instalação (ou as migrações pendentes), habilitar e-mail, configurar o envio SMTP e as URLs de retorno e definir as duas variáveis públicas na Vercel.
+
+A compilação aceita `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` ou os nomes públicos `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` fornecidos pela Vercel. Somente esses dois valores públicos são repassados ao cliente; chaves administrativas não são usadas.
 
 Com o Supabase configurado, o app exibe o acesso por **link de e-mail**. Cada pessoa usa seu e-mail, e a mesma conta acessa os mesmos registros em diferentes aparelhos. A sessão persiste no SDK; sair encerra somente a sessão do aparelho atual. As tabelas mantêm RLS por usuário. Nenhuma credencial administrativa vai para o navegador.
 
@@ -86,4 +88,4 @@ Os testes de navegador iniciam servidores isolados: **5175** com Supabase vazio 
 
 Após reinstalar `node_modules` com um Vite em execução, reinicie o processo para evitar o cache antigo de dependências (`504 Outdated Optimize Dep`).
 
-**Validação externa pendente:** não há projeto Supabase configurado nesta instância. A entrega real dos links de e-mail e a sincronização no seu projeto precisam ser verificadas após seguir o guia. A consulta ao Open Food Facts também depende da liberação de `world.openfoodfacts.org` no ambiente; a tentativa anterior retornou HTTP 403 do proxy. Os testes de serviços externos usam respostas simuladas.
+**Validação externa:** o projeto Supabase respondeu às consultas de configuração, com e-mail habilitado. Na última verificação, as tabelas do Nutria ainda não estavam disponíveis (`PGRST205`); o arquivo de primeira instalação precisa ser executado no SQL Editor. A entrega real dos links de e-mail e a sincronização no seu projeto precisam ser verificadas após seguir o guia. A consulta ao Open Food Facts também depende da liberação de `world.openfoodfacts.org` no ambiente; a tentativa anterior retornou HTTP 403 do proxy. Os testes de serviços externos usam respostas simuladas.

@@ -8,7 +8,9 @@ Acesse https://supabase.com/dashboard, crie uma conta e um projeto e aguarde a i
 
 ## 2. Criar ou atualizar as tabelas
 
-No menu **SQL Editor**, abra uma consulta, cole o conteúdo e execute cada arquivo na ordem abaixo:
+Para um projeto novo, sem tabelas do Nutria, abra **SQL Editor → New query**, cole **todo** o conteúdo de [`supabase/primeira_instalacao.sql`](supabase/primeira_instalacao.sql) e clique em **Run**. Esse arquivo reúne as três migrações em uma única transação.
+
+Para um projeto que já tenha tabelas, use somente as migrações pendentes, nesta ordem:
 
 1. `supabase/migrations/202610200001_initial.sql`
 2. `supabase/migrations/202610200002_food_barcodes.sql`
@@ -28,8 +30,8 @@ Não é necessário habilitar **Anonymous Sign-Ins** para novas contas. Se exist
 
 Em **Authentication → URL Configuration**:
 
-- **Site URL:** o endereço publicado do app, por exemplo `https://seu-app.vercel.app`.
-- **Redirect URLs:** acrescente esse mesmo endereço com `/` no final, por exemplo `https://seu-app.vercel.app/`.
+- **Site URL:** o endereço publicado do app, `https://dieta-beryl-two.vercel.app`.
+- **Redirect URLs:** acrescente esse mesmo endereço com `/` no final, `https://dieta-beryl-two.vercel.app/`.
 
 Se você usar domínio próprio ou um endereço de prévia diferente, inclua a origem correspondente. O link retorna à origem em que foi solicitado. O aplicativo usa o fluxo implícito do Supabase, permitindo abrir o link em outro dispositivo. Mantenha o modelo de e-mail **Magic Link** com o link padrão `{{ .ConfirmationURL }}`. Não substitua por um fluxo PKCE ou somente por um código numérico sem ajustar o aplicativo.
 
@@ -49,6 +51,8 @@ Na Vercel, abra **Project → Settings → Environment Variables** e crie:
 VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=SUA-CHAVE-PUBLICA
 ```
+
+A integração da Vercel também pode fornecer `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY`: a compilação aceita esses dois nomes públicos como alternativa. Se houver variáveis `VITE_` definidas, elas têm prioridade. `SUPABASE_SECRET_KEY` e `SUPABASE_JWKS_URL` não são usados no navegador. Não copie uma chave secreta para o campo de chave pública.
 
 Marque os ambientes em que o app deve funcionar e faça um **Redeploy**, pois o Vite lê essas variáveis durante a compilação. Não use a chave `service_role`, `sb_secret_…` nem a senha do banco. A chave pública não dá acesso aos dados de outras contas: as políticas RLS exigem a sessão do proprietário.
 
