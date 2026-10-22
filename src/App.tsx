@@ -27,6 +27,7 @@ import {
   initialAccessError,
 } from "./auth";
 import Auth from "./Auth";
+import { nativeBack } from "./native";
 import { StoreProvider, useStore } from "./store";
 import { dateInZone, type Data } from "./domain";
 import Dashboard from "./Dashboard";
@@ -71,6 +72,19 @@ function Shell({
     const id = setTimeout(() => setNotice(""), 6000);
     return () => clearTimeout(id);
   }, [notice, setNotice]);
+  useEffect(() => {
+    const back = (event: Event) => {
+      if (mobile) {
+        event.preventDefault();
+        setMobile(false);
+      } else if (page !== "home") {
+        event.preventDefault();
+        setPage("home");
+      }
+    };
+    window.addEventListener(nativeBack, back);
+    return () => window.removeEventListener(nativeBack, back);
+  }, [page, mobile]);
   function navigate(p: string) {
     setPage(p);
     setMobile(false);

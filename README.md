@@ -14,6 +14,10 @@ npm run dev
 
 O servidor de desenvolvimento usa a porta 5173. `npm run build` gera `dist` para hospedagem estática com HTTPS; `npm run preview` serve a compilação para conferência local.
 
+## Aplicativo Android
+
+O mesmo sistema pode ser instalado no Android como APK, integrado ao Supabase do site. Consulte [ANDROID.md](ANDROID.md) para instalar, compilar e entender os recursos nativos. O comando `npm run android:apk` gera o arquivo instalável com a configuração pública de `.env.local`.
+
 ## Contas e sincronização
 
 Siga o passo a passo em [CONFIGURAR_SUPABASE.md](CONFIGURAR_SUPABASE.md) para criar o projeto, executar o SQL único de primeira instalação (ou as migrações pendentes, incluindo a de acesso direto), habilitar Anonymous Sign-Ins e definir as duas variáveis públicas na Vercel.

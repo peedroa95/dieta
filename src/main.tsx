@@ -9,6 +9,12 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles.css";
+import { initializeNative } from "./native";
+const nativeReady = initializeNative().catch(() => () => {});
+if (import.meta.hot)
+  import.meta.hot.dispose(() => {
+    void nativeReady.then((dispose) => dispose());
+  });
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />

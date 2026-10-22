@@ -6,3 +6,8 @@ dist/
 *.tsbuildinfo
 playwright-report/
 test-results/
+
+artifacts/
+*.jks
+*.keystore
+__pycache__/

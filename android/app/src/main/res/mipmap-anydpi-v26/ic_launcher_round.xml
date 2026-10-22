@@ -1,0 +1,4 @@
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/nutria_green" />
+    <foreground android:drawable="@drawable/ic_nutria_foreground" />
+</adaptive-icon>

@@ -1,0 +1,7 @@
+<resources>
+    <color name="nutria_green">#285e47</color>
+    <color name="nutria_background">#f7f8f4</color>
+    <color name="colorPrimary">#285e47</color>
+    <color name="colorPrimaryDark">#245b47</color>
+    <color name="colorAccent">#285e47</color>
+</resources>

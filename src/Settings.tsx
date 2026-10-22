@@ -1,4 +1,5 @@
 import TransferData from "./TransferData";
+import { exportJsonFile } from "./native";
 import { localSourceId } from "./transfer";
 import { useState, type FormEvent } from "react";
 import {
@@ -441,9 +442,10 @@ export function Settings({ navigate }: { navigate: (p: string) => void }) {
   } = useStore();
   const goal = goalAt(data.daily_goals, today);
   const [editing, setEditing] = useState(false);
-  function download() {
-    const blob = new Blob(
-      [
+  async function download() {
+    try {
+      await exportJsonFile(
+        `nutria-${today}.json`,
         JSON.stringify(
           {
             exported_at: new Date().toISOString(),
@@ -455,16 +457,12 @@ export function Settings({ navigate }: { navigate: (p: string) => void }) {
           null,
           2,
         ),
-      ],
-      { type: "application/json" },
-    );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `nutria-${today}.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+      );
+    } catch {
+      setNotice("Não foi possível exportar os registros. Tente novamente.");
+    }
   }
+
   return (
     <>
       <div className="page-title">

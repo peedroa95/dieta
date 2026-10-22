@@ -10,9 +10,18 @@
     "test:e2e": "playwright test",
     "preview": "vite preview --host 0.0.0.0",
     "format": "prettier --write src tests *.ts *.json index.html README.md",
-    "format:check": "prettier --check src tests *.ts *.json index.html README.md"
+    "format:check": "prettier --check src tests *.ts *.json index.html README.md",
+    "android:setup": "bash scripts/setup-jdk.sh && python3 scripts/setup-android.py",
+    "android:sync": "node scripts/sync-android.mjs",
+    "android:open": "cap open android",
+    "android:apk": "node scripts/build-android.mjs"
   },
   "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/filesystem": "8.1.5",
+    "@capacitor/share": "8.0.3",
     "@fontsource/dm-sans": "^5.3.0",
     "@fontsource/manrope": "^5.3.0",
     "@supabase/supabase-js": "^2.78.0",
@@ -22,6 +31,7 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.3",
     "@electric-sql/pglite": "^0.5.10",
     "@playwright/test": "^1.56.0",
     "@types/node": "^24.0.0",
