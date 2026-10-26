@@ -1,4 +1,4 @@
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { loadEnv } from "vite";
 import { root, run } from "./sync-android.mjs";
 

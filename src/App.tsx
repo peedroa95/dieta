@@ -26,7 +26,7 @@ import {
   callbackError,
   initialAccessError,
 } from "./auth";
-import Auth from "./Auth";
+import Auth from "./AccessScreen";
 import { nativeBack } from "./native";
 import { StoreProvider, useStore } from "./store";
 import { dateInZone, type Data } from "./domain";
