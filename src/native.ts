@@ -7,20 +7,23 @@ export const nativeBack = "nutria-native-back";
 
 export async function initializeNative() {
   if (!Capacitor.isNativePlatform()) return () => {};
-  const listeners = await Promise.all([
-    App.addListener("appStateChange", ({ isActive }) => {
+  const listeners = [
+    await App.addListener("appStateChange", ({ isActive }) => {
       if (isActive) window.dispatchEvent(new Event("focus"));
     }),
-    App.addListener("backButton", () => {
-      const modal = document.querySelector("dialog[open]");
-      if (modal) {
-        modal.dispatchEvent(new Event("cancel", { cancelable: true }));
-        return;
-      }
-      if (window.dispatchEvent(new Event(nativeBack, { cancelable: true })))
-        void App.minimizeApp();
-    }),
-  ]);
+  ];
+  if (Capacitor.getPlatform() === "android")
+    listeners.push(
+      await App.addListener("backButton", () => {
+        const modal = document.querySelector("dialog[open]");
+        if (modal) {
+          modal.dispatchEvent(new Event("cancel", { cancelable: true }));
+          return;
+        }
+        if (window.dispatchEvent(new Event(nativeBack, { cancelable: true })))
+          void App.minimizeApp();
+      }),
+    );
   return () => {
     for (const listener of listeners) void listener.remove();
   };

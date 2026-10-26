@@ -1,0 +1,82 @@
+name: iOS - IPA para instalação local
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/ios.yml
+
+concurrency:
+  group: ios-ipa
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      NUTRIA_SITE_URL: https://dieta-beryl-two.vercel.app/
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Verificar Xcode
+        run: xcodebuild -version
+      - name: Obter configuração pública do mesmo Supabase do site
+        run: python3 scripts/load-ios-env.py
+      - run: npm ci --no-audit --no-fund
+      - run: npm run ios:sync
+      - name: Compilar para iPhone (a assinatura será feita no computador do usuário)
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App \
+            -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/nutria-ios" \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Empacotar IPA sem assinatura
+        run: |
+          mkdir -p "$RUNNER_TEMP/nutria-package/Payload" artifacts/ios
+          cp -R "$RUNNER_TEMP/nutria-ios/Build/Products/Release-iphoneos/App.app" "$RUNNER_TEMP/nutria-package/Payload/"
+          cd "$RUNNER_TEMP/nutria-package"
+          /usr/bin/zip -qry "$GITHUB_WORKSPACE/artifacts/ios/nutria-ios-unsigned.ipa" Payload
+          cd "$GITHUB_WORKSPACE/artifacts/ios"
+          shasum -a 256 nutria-ios-unsigned.ipa > nutria-ios-unsigned.ipa.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nutria-ios-para-assinar-no-computador
+          path: artifacts/ios/
+          retention-days: 30
+      - name: Disponibilizar também pela branch builds/ios
+        # O Git permite baixar o resultado sem depender da API de artefatos.
+        # A branch principal e o código-fonte não são alterados por esta etapa.
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/nutria-delivery"
+          cp artifacts/ios/* "$RUNNER_TEMP/nutria-delivery/"
+          cp IOS.md "$RUNNER_TEMP/nutria-delivery/README.md"
+          if git ls-remote --exit-code origin refs/heads/builds/ios >/dev/null 2>&1; then
+            git fetch origin builds/ios --depth=1
+            git switch -C builds/ios FETCH_HEAD
+            test -f .nutria-ios-build
+          else
+            git switch --orphan builds/ios
+            git rm -rf . --ignore-unmatch
+          fi
+          cp "$RUNNER_TEMP/nutria-delivery/"* .
+          printf '%s\n' "$SOURCE_SHA" > source-commit.txt
+          touch .nutria-ios-build
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add README.md nutria-ios-unsigned.ipa nutria-ios-unsigned.ipa.sha256 source-commit.txt .nutria-ios-build
+          git diff --cached --quiet || git commit -m "IPA iOS para assinatura local ($SOURCE_SHA)"
+          git push origin HEAD:builds/ios

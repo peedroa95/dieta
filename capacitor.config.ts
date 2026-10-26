@@ -4,9 +4,10 @@ const config: CapacitorConfig = {
   appId: "com.nutria.dieta",
   appName: "Nutria",
   webDir: "dist",
-  // Os arquivos da interface são empacotados no APK; a API continua no Supabase.
+  // Os arquivos da interface são empacotados no aplicativo; a API continua no Supabase.
   server: { androidScheme: "https", cleartext: false },
   android: { backgroundColor: "#f7f8f4" },
+  ios: { backgroundColor: "#f7f8f4", preferredContentMode: "mobile" },
   plugins: { SystemBars: { insetsHandling: "native", style: "LIGHT" } },
 };
 export default config;

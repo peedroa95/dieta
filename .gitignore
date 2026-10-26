@@ -11,3 +11,9 @@ artifacts/
 *.jks
 *.keystore
 __pycache__/
+
+*.p12
+*.p8
+*.mobileprovision
+*.ipa
+*.xcarchive/

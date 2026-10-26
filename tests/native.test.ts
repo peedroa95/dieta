@@ -1,13 +1,14 @@
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({
   native: vi.fn(),
+  platform: vi.fn(),
   addListener: vi.fn(),
   minimize: vi.fn(),
   write: vi.fn(),
   share: vi.fn(),
 }));
 vi.mock("@capacitor/core", () => ({
-  Capacitor: { isNativePlatform: mock.native },
+  Capacitor: { isNativePlatform: mock.native, getPlatform: mock.platform },
 }));
 vi.mock("@capacitor/app", () => ({
   App: { addListener: mock.addListener, minimizeApp: mock.minimize },
@@ -25,6 +26,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   callbacks.clear();
   mock.native.mockReturnValue(true);
+  mock.platform.mockReturnValue("android");
   mock.addListener.mockImplementation(async (name, callback) => {
     callbacks.set(name, callback);
     return { remove };
@@ -106,4 +108,15 @@ it("mantém o download JSON no navegador sem chamar plugins", async () => {
   expect(mock.share).not.toHaveBeenCalled();
   vi.runAllTimers();
   expect(revoke).toHaveBeenCalledWith("blob:test");
+});
+
+it("no iOS registra a retomada sem instalar o botão Voltar exclusivo do Android", async () => {
+  mock.platform.mockReturnValue("ios");
+  const dispose = await initializeNative();
+  expect(mock.addListener).toHaveBeenCalledTimes(1);
+  expect(callbacks.has("backButton")).toBe(false);
+  callbacks.get("appStateChange")!({ isActive: true });
+  expect(window.dispatchEvent).toHaveBeenCalledOnce();
+  dispose();
+  expect(remove).toHaveBeenCalledOnce();
 });
