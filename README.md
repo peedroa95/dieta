@@ -58,6 +58,29 @@ O produto só é salvo no seu armazenamento após a confirmação. A consulta n�
 - O código é armazenado como texto e pode ser usado na busca da biblioteca. A mesma identidade não pode cadastrar duas vezes o mesmo código, inclusive UPC e EAN equivalentes com zeros à esquerda. A duplicação de um alimento limpa o EAN da cópia.
 - Produto não encontrado, erro de rede ou limite da API não bloqueiam o cadastro manual: mantenha o código e informe os valores do rótulo.
 - A fonte e o link do produto são preservados no cadastro. A interface atribui os dados ao Open Food Facts (ODbL).
+
+## Importar alimentos por JSON
+
+Em **Meus alimentos → Importar JSON**, cole um alimento, uma lista de alimentos ou um objeto com a propriedade `foods`. Cada item exige `name`, `calories`, `protein`, `carbs` e `fat`; os outros nutrientes são opcionais e recebem zero quando omitidos. `reference` assume 100 e `unit` assume `g`.
+
+```json
+[
+  {
+    "name": "Arroz cozido",
+    "brand": "",
+    "category": "Arroz, massas e cereais",
+    "unit": "g",
+    "reference": 100,
+    "calories": 130,
+    "protein": 2.7,
+    "carbs": 28,
+    "fat": 0.3,
+    "fiber": 0.4
+  }
+]
+```
+
+Os nutrientes aceitos são `calories`, `protein`, `carbs`, `fat`, `fiber`, `sugar`, `saturated_fat`, `trans_fat`, `sodium` e `cholesterol`. Também é possível agrupá-los em `nutrition`. A importação valida a lista inteira antes de salvar e pede confirmação; alimentos com o mesmo nome e marca são incluídos como novos cadastros.
 - Só são importados valores numéricos não negativos informados pela fonte. Nutrientes essenciais ausentes permanecem em branco e precisam ser preenchidos antes de salvar. Nutrientes opcionais ausentes são identificados em `unknown_nutrients`; a interface não os apresenta como valores conhecidos. Internamente, esses opcionais não informados não acrescentam valor aos totais.
 - Os campos `_100g` da API representam a referência normalizada de 100 g/100 ml. A unidade exige confirmação no rótulo. Dados por porção não são interpretados como dados por 100 g. Sódio é convertido de gramas na fonte para miligramas no aplicativo; energia em kJ explicitamente identificada pode ser convertida para kcal.
 - Colesterol não é importado automaticamente; pode ser preenchido manualmente em mg, evitando pressupor a unidade da fonte.
@@ -99,3 +122,4 @@ Os testes de navegador iniciam servidores isolados: **5175** com Supabase vazio 
 Após reinstalar `node_modules` com um Vite em execução, reinicie o processo para evitar o cache antigo de dependências (`504 Outdated Optimize Dep`).
 
 **Validação externa:** o Supabase respondeu às consultas de configuração. A ativação do acesso direto precisa da quarta migração e de Anonymous Sign-Ins habilitado; essas mudanças são feitas no painel, conforme o guia. A consulta ao Open Food Facts depende da liberação de `world.openfoodfacts.org`; a tentativa anterior retornou HTTP 403 do proxy. Os testes de navegador dos serviços externos usam respostas simuladas.
+
