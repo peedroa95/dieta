@@ -372,7 +372,11 @@ export default function Foods() {
         const unit = raw.unit ?? "g";
         if (!["g", "ml", "porção"].includes(String(unit)))
           throw new Error(`Item ${index + 1}: unit deve ser g, ml ou porção.`);
-        const food = {
+        const importedNutrition = nutrients.reduce((result, nutrient) => {
+          result[nutrient] = Number(nutrition[nutrient] ?? 0);
+          return result;
+        }, zero());
+        const food: Food = {
           id: crypto.randomUUID(),
           user_id: userId,
           name,
@@ -386,8 +390,8 @@ export default function Foods() {
           barcode: typeof raw.barcode === "string" ? raw.barcode : null,
           source_url: typeof raw.source_url === "string" ? raw.source_url : null,
           unknown_nutrients: [],
-          ...Object.fromEntries(nutrients.map((n) => [n, Number(nutrition[n] ?? 0)])),
-        } as Food;
+          ...importedNutrition,
+        };
         try {
           calculate(food, food.reference, food.unit);
           assertUniqueBarcode(food, [...data.foods, ...importedSoFar]);
