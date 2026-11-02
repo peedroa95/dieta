@@ -14,6 +14,7 @@ import {
   Trash2,
   ArrowUpRight,
   Barcode,
+  FileJson,
 } from "lucide-react";
 import { useStore } from "./store";
 import { Modal, Empty, NutrientPills } from "./ui";
@@ -339,9 +340,75 @@ export default function Foods() {
   const [favorites, setFavorites] = useState(false);
   const [barcodeFocus, setBarcodeFocus] = useState(false);
   const [editor, setEditor] = useState<Food | "new" | null>(null);
+  const [jsonOpen, setJsonOpen] = useState(false);
+  const [jsonText, setJsonText] = useState("");
+  const [jsonError, setJsonError] = useState("");
   const foods = searchFoods(data.foods, query).filter(
     (f) => (!category || f.category === category) && (!favorites || f.favorite),
   );
+  async function importJson() {
+    setJsonError("");
+    try {
+      const parsed: unknown = JSON.parse(jsonText);
+      const source = Array.isArray(parsed)
+        ? parsed
+        : parsed && typeof parsed === "object" && Array.isArray((parsed as { foods?: unknown }).foods)
+          ? (parsed as { foods: unknown[] }).foods
+          : [parsed];
+      if (!source.length) throw new Error("O JSON não contém alimentos.");
+      const importedSoFar: Food[] = [];
+      const imported = source.map((item, index) => {
+        if (!item || typeof item !== "object" || Array.isArray(item))
+          throw new Error(`Item ${index + 1}: esperado um objeto de alimento.`);
+        const raw = item as Record<string, unknown>;
+        const nutrition = (raw.nutrition && typeof raw.nutrition === "object"
+          ? raw.nutrition
+          : raw) as Record<string, unknown>;
+        const name = typeof raw.name === "string" ? raw.name.trim() : "";
+        if (!name) throw new Error(`Item ${index + 1}: informe name.`);
+        for (const required of nutrients.slice(0, 4))
+          if (nutrition[required] === undefined || !Number.isFinite(Number(nutrition[required])) || Number(nutrition[required]) < 0)
+            throw new Error(`Item ${index + 1} (${name}): informe ${required} como um número não negativo.`);
+        const unit = raw.unit ?? "g";
+        if (!["g", "ml", "porção"].includes(String(unit)))
+          throw new Error(`Item ${index + 1}: unit deve ser g, ml ou porção.`);
+        const food = {
+          id: crypto.randomUUID(),
+          user_id: userId,
+          name,
+          brand: typeof raw.brand === "string" ? raw.brand.trim() : "",
+          category: categories.includes(String(raw.category)) ? String(raw.category) : "Outros",
+          unit: unit as Unit,
+          reference: Number(raw.reference ?? (unit === "porção" ? 1 : 100)),
+          portion_weight: raw.portion_weight == null ? null : Number(raw.portion_weight),
+          notes: typeof raw.notes === "string" ? raw.notes : "",
+          favorite: Boolean(raw.favorite),
+          barcode: typeof raw.barcode === "string" ? raw.barcode : null,
+          source_url: typeof raw.source_url === "string" ? raw.source_url : null,
+          unknown_nutrients: [],
+          ...Object.fromEntries(nutrients.map((n) => [n, Number(nutrition[n] ?? 0)])),
+        } as Food;
+        try {
+          calculate(food, food.reference, food.unit);
+          assertUniqueBarcode(food, [...data.foods, ...importedSoFar]);
+        } catch (error) {
+          throw new Error(`Item ${index + 1} (${name}): ${(error as Error).message}`);
+        }
+        importedSoFar.push(food);
+        return food;
+      });
+      const duplicates = imported.filter((food) =>
+        data.foods.some((existing) => normalize(existing.name) === normalize(food.name) && normalize(existing.brand) === normalize(food.brand)),
+      ).length;
+      if (!window.confirm(`Importar ${imported.length} alimento(s)?${duplicates ? ` ${duplicates} já existem pelo nome e marca; serão adicionados como novos cadastros.` : ""}`)) return;
+      if (await run(() => put("foods", imported), `${imported.length} alimento(s) importado(s).`)) {
+        setJsonOpen(false);
+        setJsonText("");
+      }
+    } catch (error) {
+      setJsonError((error as Error).message || "Não foi possível ler o JSON.");
+    }
+  }
   return (
     <>
       <div className="page-title">
@@ -353,6 +420,10 @@ export default function Foods() {
           <p>Cadastre uma vez. Registre do seu jeito, todos os dias.</p>
         </div>
         <div className="food-header-actions">
+          <button className="button secondary" onClick={() => setJsonOpen(true)}>
+            <FileJson size={18} />
+            Importar JSON
+          </button>
           <button
             className="button secondary"
             onClick={() => {
@@ -375,6 +446,22 @@ export default function Foods() {
           </button>
         </div>
       </div>
+      {jsonOpen && (
+        <Modal title="Importar alimentos por JSON" subtitle="Cole um alimento, uma lista ou um objeto com a propriedade foods." onClose={() => setJsonOpen(false)} wide>
+          <div className="form">
+            <label>
+              Dados JSON
+              <textarea className="json-import-input" value={jsonText} onChange={(event) => setJsonText(event.target.value)} placeholder={'[{\n  "name": "Arroz cozido",\n  "category": "Arroz, massas e cereais",\n  "unit": "g",\n  "reference": 100,\n  "calories": 130,\n  "protein": 2.7,\n  "carbs": 28,\n  "fat": 0.3\n}]'} />
+            </label>
+            <p className="muted">Campos nutricionais aceitos: calories, protein, carbs, fat, fiber, sugar, saturated_fat, trans_fat, sodium e cholesterol. Os quatro primeiros são obrigatórios por alimento.</p>
+            {jsonError && <p className="error" role="alert">{jsonError}</p>}
+            <footer className="modal-actions">
+              <button className="button secondary" onClick={() => setJsonOpen(false)}>Cancelar</button>
+              <button className="button" disabled={busy || !jsonText.trim()} onClick={() => void importJson()}>{busy ? "Importando…" : "Validar e importar"}</button>
+            </footer>
+          </div>
+        </Modal>
+      )}
       <section className="card">
         <div className="toolbar">
           <label className="search">
@@ -540,3 +627,4 @@ export default function Foods() {
     </>
   );
 }
+
